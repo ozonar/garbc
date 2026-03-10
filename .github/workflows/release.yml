@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Запуск при пуше тегов вида v1.0.0
+
+jobs:
+  build-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Build for Windows
+        env:
+          CGO_ENABLED: 1
+          CC: x86_64-w64-mingw32-gcc
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go mod tidy
+          go build -ldflags="-H windowsgui" -o garbage-collector.exe ./cmd/garbage-collector
+          echo "Build completed"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: garbage-collector.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
