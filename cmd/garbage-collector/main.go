@@ -25,8 +25,8 @@ type FileMoverApp struct {
 	currentDir       string
 	fileList         *widget.List
 	buttonFrame      *fyne.Container
-	selectedID       widget.ListItemID
-	lastSelectedID   widget.ListItemID
+	selectedRow      int
+	lastSelectedRow  int
 	lastSelectedTime time.Time
 }
 
@@ -125,36 +125,29 @@ func (app *FileMoverApp) processFilesOnStart() {
 }
 
 func (app *FileMoverApp) createUI() {
-	// Список файлов
+	// Список файлов с кнопками
 	app.fileList = widget.NewList(
 		func() int {
 			return len(app.getFileItems())
 		},
 		func() fyne.CanvasObject {
-			return widget.NewLabel("template")
+			btn := widget.NewButton("", nil)
+			btn.Alignment = widget.ButtonAlignLeading
+			btn.Importance = widget.LowImportance
+			return btn
 		},
 		func(id widget.ListItemID, obj fyne.CanvasObject) {
 			items := app.getFileItems()
 			if id < len(items) {
-				obj.(*widget.Label).SetText(items[id])
+				btn := obj.(*widget.Button)
+				btn.SetText(items[id])
+				// Обработчик нажатия на кнопку
+				btn.OnTapped = func() {
+					app.handleItemTap(id)
+				}
 			}
 		},
 	)
-	app.fileList.OnSelected = func(id widget.ListItemID) {
-		now := time.Now()
-		// Проверка двойного клика
-		if app.lastSelectedID == id && now.Sub(app.lastSelectedTime) < 500*time.Millisecond {
-			app.openItem(id)
-			app.lastSelectedID = -1 // сброс, чтобы не открывать снова
-		} else {
-			app.selectedID = id
-			app.lastSelectedID = id
-			app.lastSelectedTime = now
-		}
-	}
-	app.fileList.OnUnselected = func(id widget.ListItemID) {
-		app.selectedID = -1
-	}
 
 	// Фрейм для кнопок
 	app.buttonFrame = container.NewVBox()
@@ -165,6 +158,19 @@ func (app *FileMoverApp) createUI() {
 
 	app.window.SetContent(split)
 	app.updateInterface()
+}
+
+func (app *FileMoverApp) handleItemTap(id widget.ListItemID) {
+	now := time.Now()
+	// Проверка двойного клика
+	if app.lastSelectedRow == id && now.Sub(app.lastSelectedTime) < 500*time.Millisecond {
+		app.openItem(id)
+		app.lastSelectedRow = -1 // сброс, чтобы не открывать снова
+	} else {
+		app.selectedRow = id
+		app.lastSelectedRow = id
+		app.lastSelectedTime = now
+	}
 }
 
 func (app *FileMoverApp) getFileItems() []string {
@@ -215,16 +221,16 @@ func (app *FileMoverApp) updateInterface() {
 }
 
 func (app *FileMoverApp) moveFiles(targetDir string) {
-	if app.selectedID < 0 {
+	if app.selectedRow < 0 {
 		dialog.ShowInformation("Предупреждение", "Не выбран файл для перемещения", app.window)
 		return
 	}
 
 	items := app.getFileItems()
-	if app.selectedID >= len(items) {
+	if app.selectedRow >= len(items) {
 		return
 	}
-	name := items[app.selectedID]
+	name := items[app.selectedRow]
 	src := filepath.Join(app.currentDir, name)
 	dst := filepath.Join(targetDir, name)
 	if err := os.Rename(src, dst); err != nil {
@@ -232,28 +238,28 @@ func (app *FileMoverApp) moveFiles(targetDir string) {
 		return
 	}
 
-	app.selectedID = -1
+	app.selectedRow = -1
 	app.updateInterface()
 }
 
 func (app *FileMoverApp) deleteFiles() {
-	if app.selectedID < 0 {
+	if app.selectedRow < 0 {
 		dialog.ShowInformation("Предупреждение", "Не выбран файл для удаления", app.window)
 		return
 	}
 
 	items := app.getFileItems()
-	if app.selectedID >= len(items) {
+	if app.selectedRow >= len(items) {
 		return
 	}
-	name := items[app.selectedID]
+	name := items[app.selectedRow]
 	src := filepath.Join(app.currentDir, name)
 	if err := os.Remove(src); err != nil {
 		dialog.ShowError(fmt.Errorf("не удалось удалить файл %s: %v", name, err), app.window)
 		return
 	}
 
-	app.selectedID = -1
+	app.selectedRow = -1
 	app.updateInterface()
 }
 
@@ -276,12 +282,12 @@ func openSystem(path string, isDir bool) error {
 }
 
 // openItem открывает выбранный элемент (файл или папку)
-func (app *FileMoverApp) openItem(id widget.ListItemID) {
+func (app *FileMoverApp) openItem(row int) {
 	items := app.getFileItems()
-	if id < 0 || id >= len(items) {
+	if row < 0 || row >= len(items) {
 		return
 	}
-	name := items[id]
+	name := items[row]
 	fullPath := filepath.Join(app.currentDir, name)
 
 	// Проверяем, является ли путь директорией
@@ -291,15 +297,8 @@ func (app *FileMoverApp) openItem(id widget.ListItemID) {
 		return
 	}
 
-	if info.IsDir() {
-		// Для папки меняем текущую директорию и обновляем интерфейс
-		app.currentDir = fullPath
-		app.selectedID = -1
-		app.updateInterface()
-	} else {
-		// Для файла открываем с помощью системного ассоциированного приложения
-		if err := openSystem(fullPath, false); err != nil {
-			dialog.ShowError(fmt.Errorf("не удалось открыть файл %s: %v", name, err), app.window)
-		}
+	isDir := info.IsDir()
+	if err := openSystem(fullPath, isDir); err != nil {
+		dialog.ShowError(fmt.Errorf("не удалось открыть %s: %v", name, err), app.window)
 	}
 }
