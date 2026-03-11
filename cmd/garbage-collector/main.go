@@ -85,18 +85,9 @@ func ensureEnv() string {
 
 	workDir := os.Getenv("WORK_DIR")
 	if workDir == "" {
-		// Если WORK_DIR пустой, перезаписываем файл
-		cwd, err := os.Getwd()
-		if err != nil {
-			log.Fatal("Не удалось определить текущую директорию:", err)
-		}
-		content := fmt.Sprintf("WORK_DIR=%s\n", cwd)
-		if err := os.WriteFile(envFile, []byte(content), 0644); err != nil {
-			log.Fatal("Не удалось обновить .env файл:", err)
-		}
-		log.Println("Обновлён .env файл с WORK_DIR =", cwd)
-		workDir = cwd
+		log.Fatal("WORK_DIR is empty")
 	}
+
 	return workDir
 }
 
@@ -272,6 +263,7 @@ func openSystem(path string, isDir bool) error {
 			cmd = exec.Command("explorer", path)
 		} else {
 			cmd = exec.Command("cmd", "/c", "start", "", path)
+			configureCmd(cmd)
 		}
 	case "darwin":
 		cmd = exec.Command("open", path)
